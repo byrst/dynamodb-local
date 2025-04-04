@@ -1,24 +1,22 @@
 'use strict';
 
-var os = require('os'),
+const os = require('os'),
     spawn = require('child_process').spawn,
     fs = require('fs'),
     https = require('https'),
     tar = require('tar'),
     zlib = require('zlib'),
     path = require('path'),
-    mkdirp = require('mkdirp'),
-    Q = require('q'),
     debug = require('debug')('dynamodb-local');
 
-var JARNAME = 'DynamoDBLocal.jar';
+const JARNAME = 'DynamoDBLocal.jar';
 
-var Config = {
+const Config = {
     installPath: path.join(os.tmpdir(), 'dynamodb-local'),
     downloadUrl: 'https://s3-us-west-2.amazonaws.com/dynamodb-local/dynamodb_local_latest.tar.gz'
 };
 
-var runningProcesses = {},
+const runningProcesses = {},
     DynamoDbLocal = {
         /**
          *
@@ -27,32 +25,29 @@ var runningProcesses = {},
          * @param additionalArgs
          * @param verbose
          * @param detached
+         * @param javaOpts
          * @returns {Promise.<ChildProcess>}
          */
-        launch: function (port, dbPath, additionalArgs, verbose = false, detached, javaOpts = '') {
+        launch: async function (port, dbPath, additionalArgs, verbose = false, detached, javaOpts = '') {
             if (runningProcesses[port]) {
-                return Q.fcall(function () {
-                    return runningProcesses[port];
-                });
+                return runningProcesses[port];
             }
 
             if (!additionalArgs) {
                 additionalArgs = [];
-            }
-            else if (!Array.isArray(additionalArgs)) {
+            } else if (!Array.isArray(additionalArgs)) {
                 additionalArgs = [additionalArgs];
             }
 
             if (!dbPath) {
                 additionalArgs.push('-inMemory');
-            }
-            else {
+            } else {
                 additionalArgs.push('-dbPath', dbPath);
             }
 
             return installDynamoDbLocal()
                 .then(function () {
-                    var args = [
+                    let args = [
                         '-Xrs',
                         '-Djava.library.path=./DynamoDBLocal_lib',
                         javaOpts,
@@ -63,7 +58,7 @@ var runningProcesses = {},
                     ].filter(arg => !!arg);
                     args = args.concat(additionalArgs);
 
-                    var child = spawn('java', args, {
+                    const child = spawn('java', args, {
                         cwd: Config.installPath,
                         env: process.env,
                         stdio: ['ignore', 'ignore', 'inherit']
@@ -82,9 +77,9 @@ var runningProcesses = {},
                             }
                         });
                     if (!detached) {
-                      process.on('exit', function() {
-                          child.kill();
-                      });
+                        process.on('exit', function () {
+                            child.kill();
+                        });
                     }
 
                     runningProcesses[port] = child;
@@ -109,9 +104,9 @@ var runningProcesses = {},
                 child.kill();
             }
         },
-        relaunch: function (port, ...args) {
+        relaunch: async function (port, ...args) {
             this.stop(port);
-            this.launch(port, ...args);
+            return await this.launch(port, ...args);
         },
         configureInstaller: function (conf) {
             if (conf.installPath) {
@@ -125,16 +120,12 @@ var runningProcesses = {},
 
 module.exports = DynamoDbLocal;
 
-function installDynamoDbLocal() {
+async function installDynamoDbLocal() {
     debug('Checking for DynamoDB-Local in ', Config.installPath);
-    var filebuf = [];
-    var deferred = Q.defer();
 
     try {
         if (fs.existsSync(path.join(Config.installPath, JARNAME))) {
-            return Q.fcall(function () {
-                return true;
-            });
+            return;
         }
     } catch (e) {
     }
@@ -146,37 +137,36 @@ function installDynamoDbLocal() {
 
     if (fs.existsSync(Config.downloadUrl)) {
         debug('Installing from local file:', Config.downloadUrl);
-        filebuf = fs.createReadStream(Config.downloadUrl);
+        let filebuf = fs.createReadStream(Config.downloadUrl);
         filebuf
-            .pipe(zlib.Unzip())
+            .pipe(zlib.createGunzip())
             .pipe(tar.extract({cwd: Config.installPath}))
             .on('end', function () {
-                deferred.resolve();
+                Promise.resolve();
             })
             .on('error', function (err) {
-                deferred.reject(err);
+                Promise.reject(err);
             });
     }
     else {
         https.get(Config.downloadUrl,
             function (redirectResponse) {
-                if (200 != redirectResponse.statusCode) {
-                    deferred.reject(new Error('Error getting DynamoDb local latest tar.gz location ' +
-                    redirectResponse.headers['location'] + ': ' + redirectResponse.statusCode));
+                if (200 !== redirectResponse.statusCode) {
+                    Promise.reject(new Error('Error getting DynamoDb local latest tar.gz location ' +
+                        redirectResponse.headers['location'] + ': ' + redirectResponse.statusCode));
                 }
                 redirectResponse
-                    .pipe(zlib.Unzip())
+                    .pipe(zlib.createGunzip())
                     .pipe(tar.extract({cwd: Config.installPath}))
                     .on('end', function () {
-                        deferred.resolve();
+                        Promise.resolve();
                     })
                     .on('error', function (err) {
-                        deferred.reject(err);
+                        Promise.reject(err);
                     });
             })
             .on('error', function (e) {
-                deferred.reject(e);
+                Promise.reject(e);
             });
     }
-    return deferred.promise;
 }

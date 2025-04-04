@@ -1,11 +1,11 @@
 'use strict';
 
-var DynamoDbLocal = require('../index');
+const DynamoDbLocal = require('../index');
 
 // optional config customization - default is your OS' temp directory and an Amazon server from US West
 DynamoDbLocal.configureInstaller({
     installPath: './dynamodblocal-bin',
-    downloadUrl: 'https://s3.eu-central-1.amazonaws.com/dynamodb-local-frankfurt/dynamodb_local_latest.tar.gz'
+    downloadUrl: 'https://d1ni2b6xgvw0s0.cloudfront.net/v2.x/dynamodb_local_latest.tar.gz'
 });
 
 DynamoDbLocal.launch(8000)
